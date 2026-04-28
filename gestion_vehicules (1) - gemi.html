@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FleetLog Cloud</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg: #f5f4f0;
+    --surface: #ffffff;
+    --surface2: #f0efe9;
+    --border: rgba(0,0,0,0.1);
+    --border2: rgba(0,0,0,0.18);
+    --text: #1a1a18;
+    --text2: #5a5a55;
+    --text3: #9a9a90;
+    --accent: #2d5a9b;
+    --accent-light: #e8eef8;
+    --radius: 10px;
+    --radius-lg: 16px;
+    --shadow: 0 2px 12px rgba(0,0,0,0.08);
+    --shadow-lg: 0 8px 32px rgba(0,0,0,0.14);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* ── Header ── */
+  .header { background: var(--surface); border-bottom: 0.5px solid var(--border2); padding: 0 24px; display: flex; align-items: center; gap: 16px; height: 56px; position: sticky; top: 0; z-index: 100; }
+  .header-logo { font-size: 20px; font-weight: 700; letter-spacing: -0.5px; color: var(--text); }
+  .header-logo span { color: var(--accent); }
+  .header-nav { margin-left: auto; display: flex; gap: 4px; align-items: center; }
+  .nav-btn { padding: 6px 14px; border-radius: 8px; border: none; background: transparent; font-size: 13px; font-weight: 500; color: var(--text2); cursor: pointer; transition: background .15s, color .15s; }
+  .nav-btn:hover, .nav-btn.active { background: var(--accent-light); color: var(--accent); }
+  
+  .user-badge { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; padding: 4px 8px; border-radius: 20px; background: var(--surface2); }
+  .user-img { width: 24px; height: 24px; border-radius: 50%; background: #ccc; }
+
+  /* ── Login Overlay ── */
+  #login-view { position: fixed; inset: 0; background: var(--bg); z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  .login-card { background: var(--surface); padding: 40px; border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); max-width: 400px; }
+  .google-btn { background: #4285F4; color: white; border: none; padding: 12px 24px; border-radius: 6px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 10px; margin-top: 20px; }
+
+  /* ── Le reste du CSS original (simplifié pour la réponse) ── */
+  .view { display: none; padding: 24px; max-width: 960px; margin: 0 auto; }
+  .view.active { display: block; }
+  .cal-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+  .cal-title { font-size: 22px; font-weight: 700; flex: 1; }
+  .cal-nav-btn { width: 36px; height: 36px; border-radius: 50%; border: 0.5px solid var(--border2); background: var(--surface); cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .cal-day-label { text-align: center; font-size: 11px; font-weight: 600; color: var(--text3); padding: 8px 0; }
+  .cal-cell { min-height: 80px; background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 8px; cursor: pointer; position: relative; }
+  .cal-cell.today { border-color: var(--accent); background: var(--accent-light); }
+  .cal-date-num { font-size: 13px; font-weight: 500; color: var(--text2); }
+  .cal-dots { display: flex; flex-wrap: wrap; gap: 3px; }
+  .cal-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .hidden { display: none; }
+  .modal { background: var(--surface); border-radius: var(--radius-lg); padding: 28px; width: 100%; max-width: 520px; }
+  .entry-card { background: var(--surface2); border-radius: var(--radius); padding: 14px; margin-bottom: 12px; }
+  .save-btn { width: 100%; padding: 12px; border-radius: var(--radius); border: none; background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; }
+  .toggle-btn { padding: 8px 16px; border-radius: 20px; border: 0.5px solid var(--border2); background: var(--surface2); cursor: pointer; }
+  .toggle-btn.selected { background: var(--accent); color: white; }
+</style>
+</head>
+<body>
+
+<div id="login-view">
+  <div class="login-card">
+    <h1 style="margin-bottom:10px">FleetLog</h1>
+    <p style="color:var(--text2)">Connectez-vous pour synchroniser vos véhicules entre vos appareils.</p>
+    <button class="google-btn" onclick="login()">
+      <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="18">
+      Connexion avec Google
+    </button>
+  </div>
+</div>
+
+<header class="header">
+  <div class="header-logo">Fleet<span>Log</span></div>
+  <nav class="header-nav">
+    <button class="nav-btn active" onclick="showView('calendar')">Calendrier</button>
+    <button class="nav-btn" onclick="showView('search')">Recherche</button>
+    <div class="user-badge" id="user-display">
+        <img class="user-img" id="user-img" src="">
+        <span id="user-name">...</span>
+        <button onclick="logout()" style="border:none; background:none; cursor:pointer; margin-left:5px">✕</button>
+    </div>
+  </nav>
+</header>
+
+<div id="view-calendar" class="view active">
+  <div class="cal-header">
+    <button class="cal-nav-btn" onclick="changeMonth(-1)">‹</button>
+    <div class="cal-title" id="cal-title"></div>
+    <button class="cal-nav-btn" onclick="changeMonth(1)">›</button>
+  </div>
+  <div class="cal-grid" id="cal-grid">
+    <div class="cal-day-label">Lun</div>
+    <div class="cal-day-label">Mar</div>
+    <div class="cal-day-label">Mer</div>
+    <div class="cal-day-label">Jeu</div>
+    <div class="cal-day-label">Ven</div>
+    <div class="cal-day-label">Sam</div>
+    <div class="cal-day-label">Dim</div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="overlay">
+  <div class="modal">
+    <button onclick="closeModal()" style="float:right; border:none; background:none; font-size:20px; cursor:pointer">×</button>
+    <div id="modal-title" style="font-weight:700; margin-bottom:15px"></div>
+    <div id="modal-entries"></div>
+    <hr style="margin:15px 0; opacity:0.2">
+    <div id="add-form">
+        <div style="margin-bottom:10px">
+            <label style="font-size:12px; display:block; margin-bottom:5px">VÉHICULE</label>
+            <div id="add-vehicles" style="display:flex; gap:5px; flex-wrap:wrap"></div>
+        </div>
+        <div style="margin-bottom:10px">
+            <label style="font-size:12px; display:block; margin-bottom:5px">CRÉNEAU</label>
+            <div id="add-slots" style="display:flex; gap:5px"></div>
+        </div>
+        <textarea id="add-comment" placeholder="Commentaire..." style="width:100%; padding:10px; border-radius:8px; border:1px solid #ddd; margin-bottom:10px"></textarea>
+        <button class="save-btn" onclick="saveNewEntry()">Enregistrer dans le Cloud</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+  import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+  import { getFirestore, doc, setDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+  // TES CLÉS FIREBASE (Copie de ton image)
+  const firebaseConfig = {
+    apiKey: "AIzaSyCYiWI8Pt7ypbnYSz-OHApSTf4jc0XrSqc",
+    authDomain: "suivi-vehicule-d7e31.firebaseapp.com",
+    projectId: "suivi-vehicule-d7e31",
+    storageBucket: "suivi-vehicule-d7e31.firebasestorage.app",
+    messagingSenderId: "895537025676",
+    appId: "1:895537025676:web:b73af189976b93f80a21a9"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+  const provider = new GoogleAuthProvider();
+
+  // État local
+  let currentUser = null;
+  let state = {
+    vehicles: [
+      { id: 'proace', name: 'Proace', color: '#1a6fb5' },
+      { id: 'master', name: 'Master', color: '#6b6b6b' },
+      { id: 'trafic', name: 'Trafic', color: '#7a4f2e' }
+    ],
+    slots: ['Journée', 'Matin', 'Après-midi'],
+    entries: {}
+  };
+  let currentMonth = new Date();
+  let selectedDate = null;
+
+  // --- AUTHENTIFICATION ---
+  window.login = () => signInWithPopup(auth, provider);
+  window.logout = () => signOut(auth);
+
+  onAuthStateChanged(auth, (user) => {
+    if (user) {
+      currentUser = user;
+      document.getElementById('login-view').style.display = 'none';
+      document.getElementById('user-name').textContent = user.displayName;
+      document.getElementById('user-img').src = user.photoURL;
+      
+      // ÉCOUTE EN TEMPS RÉEL DE LA BASE DE DONNÉES
+      const userDoc = doc(db, "users", user.uid);
+      onSnapshot(userDoc, (docSnap) => {
+        if (docSnap.exists()) {
+          state.entries = docSnap.data().entries || {};
+          renderCalendar();
+        }
+      });
+    } else {
+      document.getElementById('login-view').style.display = 'flex';
+    }
+  });
+
+  // --- LOGIQUE APPLICATION ---
+  window.changeMonth = (d) => { currentMonth.setMonth(currentMonth.getMonth() + d); renderCalendar(); };
+
+  window.renderCalendar = () => {
+    const y = currentMonth.getFullYear();
+    const m = currentMonth.getMonth();
+    const months = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+    document.getElementById('cal-title').textContent = months[m] + ' ' + y;
+
+    const grid = document.getElementById('cal-grid');
+    grid.querySelectorAll('.cal-cell').forEach(e => e.remove());
+
+    const daysInMonth = new Date(y, m+1, 0).getDate();
+    let startDow = new Date(y, m, 1).getDay();
+    startDow = startDow === 0 ? 6 : startDow - 1;
+
+    for (let i = 0; i < startDow; i++) {
+        const c = document.createElement('div'); c.className = 'cal-cell other-month'; grid.appendChild(c);
+    }
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dt = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      const cell = document.createElement('div');
+      cell.className = 'cal-cell' + (new Date().toISOString().startsWith(dt) ? ' today' : '');
+      cell.innerHTML = `<div class="cal-date-num">${d}</div>`;
+      
+      if (state.entries[dt]) {
+        const dots = document.createElement('div'); dots.className = 'cal-dots';
+        state.entries[dt].forEach(e => {
+            const v = state.vehicles.find(x => x.id === e.vehicleId);
+            const dot = document.createElement('div'); dot.className = 'cal-dot';
+            dot.style.background = v ? v.color : '#ccc';
+            dots.appendChild(dot);
+        });
+        cell.appendChild(dots);
+      }
+      cell.onclick = () => openDay(dt);
+      grid.appendChild(cell);
+    }
+  };
+
+  window.openDay = (date) => {
+    selectedDate = date;
+    document.getElementById('modal-title').textContent = "Utilisations le " + date;
+    renderDayEntries();
+    renderFormButtons();
+    document.getElementById('overlay').classList.remove('hidden');
+  };
+
+  window.closeModal = () => document.getElementById('overlay').classList.add('hidden');
+
+  function renderDayEntries() {
+    const cont = document.getElementById('modal-entries');
+    cont.innerHTML = '';
+    const entries = state.entries[selectedDate] || [];
+    entries.forEach((e, index) => {
+        const v = state.vehicles.find(x => x.id === e.vehicleId);
+        const card = document.createElement('div');
+        card.className = 'entry-card';
+        card.innerHTML = `<strong>${v ? v.name : 'Inconnu'}</strong> - ${e.slot} <br> <small>${e.comment || ''}</small>
+        <button onclick="deleteEntry(${index})" style="float:right; color:red; border:none; background:none; cursor:pointer">Supprimer</button>`;
+        cont.appendChild(card);
+    });
+  }
+
+  function renderFormButtons() {
+    const vg = document.getElementById('add-vehicles');
+    vg.innerHTML = '';
+    state.vehicles.forEach(v => {
+        const b = document.createElement('button'); b.className = 'toggle-btn';
+        b.textContent = v.name; b.onclick = () => {
+            vg.querySelectorAll('button').forEach(x => x.classList.remove('selected'));
+            b.classList.add('selected'); b.dataset.id = v.id;
+        };
+        vg.appendChild(b);
+    });
+    const sg = document.getElementById('add-slots');
+    sg.innerHTML = '';
+    state.slots.forEach(s => {
+        const b = document.createElement('button'); b.className = 'toggle-btn';
+        b.textContent = s; b.onclick = () => {
+            sg.querySelectorAll('button').forEach(x => x.classList.remove('selected'));
+            b.classList.add('selected');
+        };
+        sg.appendChild(b);
+    });
+  }
+
+  window.saveNewEntry = async () => {
+    const v = document.querySelector('#add-vehicles .selected');
+    const s = document.querySelector('#add-slots .selected');
+    if(!v || !s) return alert("Choisis un véhicule et un créneau");
+    
+    if(!state.entries[selectedDate]) state.entries[selectedDate] = [];
+    state.entries[selectedDate].push({
+        vehicleId: v.dataset.id,
+        slot: s.textContent,
+        comment: document.getElementById('add-comment').value
+    });
+
+    await setDoc(doc(db, "users", currentUser.uid), { entries: state.entries });
+    document.getElementById('add-comment').value = '';
+    renderDayEntries();
+  };
+
+  window.deleteEntry = async (index) => {
+    state.entries[selectedDate].splice(index, 1);
+    if(state.entries[selectedDate].length === 0) delete state.entries[selectedDate];
+    await setDoc(doc(db, "users", currentUser.uid), { entries: state.entries });
+    renderDayEntries();
+  };
+
+  renderCalendar();
+</script>
+</body>
+</html>
